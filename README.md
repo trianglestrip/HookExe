@@ -65,7 +65,7 @@ pip install keyboard pillow paddleocr opencv-python psutil pywin32 numpy
 python check_dependencies.py
 ```
 
-详细安装指南请查看 [INSTALL.md](INSTALL.md) 文件。
+详细安装指南请查看 [INSTALL.md](docs/INSTALL.md) 文件。
 
 ## 快速启动
 
