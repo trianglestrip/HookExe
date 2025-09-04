@@ -5,8 +5,11 @@
 
 # 导入工具模块
 from .ui_logger import UILogger, TimingRecorder
+from .ocr_processor import OCRProcessor, create_ocr_processor
 
 __all__ = [
     'UILogger',
-    'TimingRecorder'
+    'TimingRecorder',
+    'OCRProcessor',
+    'create_ocr_processor'
 ]

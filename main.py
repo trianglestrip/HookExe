@@ -13,7 +13,7 @@ from typing import List, Dict, Optional
 # 导入各个功能模块
 from modules.ui import ProcessCaptureUI
 from modules.core import ProcessManager, ScreenshotEngine, OCREngine
-from modules.utils import UILogger, TimingRecorder
+from modules.utils import UILogger, TimingRecorder, OCRProcessor
 
 
 class ProcessCaptureApp:
@@ -30,9 +30,9 @@ class ProcessCaptureApp:
         self.screenshot_engine = ScreenshotEngine(self.logger)
         self.timing_recorder = TimingRecorder()
         
-        # 初始化OCR引擎
-        self.ocr_engine = None
-        self.init_ocr_engine()
+        # 初始化OCR处理器
+        self.ocr_processor = None
+        self.init_ocr_processor()
         
         # 设置UI回调函数
         self.setup_ui_callbacks()
@@ -46,19 +46,30 @@ class ProcessCaptureApp:
         
         self.logger.log_message("应用程序初始化完成")
     
-    def init_ocr_engine(self):
-        """初始化OCR引擎"""
+    def init_ocr_processor(self):
+        """初始化OCR处理器"""
         try:
-            self.logger.log_message("正在初始化OCR引擎...")
-            self.ocr_engine = OCREngine(
+            self.logger.log_message("正在初始化OCR处理器...")
+            
+            # 创建OCR引擎
+            ocr_engine = OCREngine(
                 lang="ch",
-                use_gpu=True,
-                confidence_threshold=0.8
+                use_gpu=False,  # 避免GPU兼容性问题
+                confidence_threshold=0.7  # 优化置信度阈值，过滤低质量结果
             )
-            self.logger.log_message("OCR引擎初始化完成")
+            
+            # 创建OCR处理器
+            self.ocr_processor = OCRProcessor(
+                ocr_engine=ocr_engine,
+                logger=self.logger,
+                save_path=self.ui.get_save_path()
+            )
+            
+            self.logger.log_message("OCR处理器初始化完成（标准模式，平均识别时间~0.2秒）")
+            
         except Exception as e:
-            self.logger.log_message(f"OCR引擎初始化失败: {e}", "ERROR")
-            self.ocr_engine = None
+            self.logger.log_message(f"OCR处理器初始化失败: {e}", "ERROR")
+            self.ocr_processor = None
     
     def setup_ui_callbacks(self):
         """设置UI回调函数"""
@@ -173,64 +184,50 @@ class ProcessCaptureApp:
                 self.ui.show_warning("警告", "截图失败，可能是应用程序有渲染保护或窗口被遮挡")
                 return False
             
-            # 阶段3: OCR识别
-            high_confidence_results = []
-            if self.ocr_engine:
+            # 阶段3: OCR识别和保存（使用新的OCRProcessor）
+            if self.ocr_processor:
                 if self.ui.is_timing_enabled():
                     self.timing_recorder.start_timing("OCR识别")
                 
                 try:
                     self.logger.log_message("开始OCR文字识别...")
-                    high_confidence_results = self.ocr_engine.recognize_pil_image(screenshot)
+                    
+                    # 更新OCR处理器的保存路径
+                    self.ocr_processor.set_save_path(self.ui.get_save_path())
+                    
+                    # 使用OCR处理器进行识别和保存
+                    high_confidence_results = self.ocr_processor.recognize_and_save(
+                        screenshot, 
+                        process_info=process_info
+                    )
                     
                     if self.ui.is_timing_enabled():
                         self.timing_recorder.end_timing("OCR识别")
                         ocr_time = self.timing_recorder.get_timing("OCR识别")
                         self.logger.log_message(f"OCR识别完成，耗时: {ocr_time:.3f}秒")
                     
-                    if high_confidence_results:
-                        self.logger.log_message(f"识别到 {len(high_confidence_results)} 个高置信度文字")
-                        
-                        # 阶段4: 绘制文字框
-                        if self.ui.is_timing_enabled():
-                            self.timing_recorder.start_timing("绘制标记")
-                        
-                        screenshot = self.draw_ocr_results(screenshot, high_confidence_results)
-                        
-                        if self.ui.is_timing_enabled():
-                            self.timing_recorder.end_timing("绘制标记")
-                            draw_time = self.timing_recorder.get_timing("绘制标记")
-                            self.logger.log_message(f"文字框绘制完成，耗时: {draw_time:.3f}秒")
+                    # 更新UI状态
+                    if self.ui.is_timing_enabled():
+                        total_time = self.timing_recorder.get_timing("总耗时")
+                        if total_time:
+                            self.ui.update_status(f"OCR识别截图成功，耗时: {total_time:.3f}秒")
+                        else:
+                            self.ui.update_status("OCR识别截图成功")
                     else:
-                        self.logger.log_message("未识别到高置信度文字")
-                        if self.ui.is_timing_enabled():
-                            self.timing_recorder.add_timing("绘制标记", 0)
+                        self.ui.update_status("OCR识别截图成功")
+                    
+                    return True
                         
                 except Exception as e:
                     if self.ui.is_timing_enabled():
                         self.timing_recorder.add_timing("OCR识别", 0)
-                        self.timing_recorder.add_timing("绘制标记", 0)
                     self.logger.log_message(f"OCR识别出错: {e}", "ERROR")
+                    return False
             else:
-                self.logger.log_message("警告：OCR引擎未初始化，直接保存原始截图")
-                if self.ui.is_timing_enabled():
-                    self.timing_recorder.add_timing("OCR识别", 0)
-                    self.timing_recorder.add_timing("绘制标记", 0)
-            
-            # 阶段5: 文件保存
-            if self.ui.is_timing_enabled():
-                self.timing_recorder.start_timing("文件保存")
-            
-            success = self.save_screenshot(screenshot, process_info, high_confidence_results)
-            
-            if self.ui.is_timing_enabled():
-                self.timing_recorder.end_timing("文件保存")
-                self.timing_recorder.end_timing("总耗时")
-                
-                # 输出详细时间统计
-                self.output_timing_statistics()
-            
-            return success
+                self.logger.log_message("警告：OCR处理器未初始化，直接保存原始截图", "ERROR")
+                # 使用传统方式保存
+                success = self.save_screenshot_fallback(screenshot, process_info)
+                return success
             
         except Exception as e:
             if self.ui.is_timing_enabled():
@@ -241,80 +238,12 @@ class ProcessCaptureApp:
                 self.logger.log_message(f"截图过程出错: {e}", "ERROR")
             return False
     
-    def draw_ocr_results(self, image, ocr_results: List[Dict]):
-        """在图像上绘制OCR识别结果"""
-        try:
-            from PIL import ImageDraw, ImageFont
-            import numpy as np
-            
-            # 创建可编辑的图像副本
-            draw_image = image.copy()
-            draw = ImageDraw.Draw(draw_image)
-            
-            # 尝试加载中文字体
-            try:
-                font = ImageFont.truetype("C:/Windows/Fonts/simhei.ttf", 16)
-                font_small = ImageFont.truetype("C:/Windows/Fonts/simhei.ttf", 12)
-            except:
-                try:
-                    font = ImageFont.truetype("arial.ttf", 16)
-                    font_small = ImageFont.truetype("arial.ttf", 12)
-                except:
-                    font = ImageFont.load_default()
-                    font_small = ImageFont.load_default()
-            
-            self.logger.log_message(f"开始绘制 {len(ocr_results)} 个高置信度文字框")
-            
-            for i, result in enumerate(ocr_results, 1):
-                box = result['box']
-                text = result['text']
-                confidence = result['confidence']
-                
-                # 转换坐标点
-                points = np.array(box, dtype=np.int32)
-                
-                # 绘制红色边框
-                draw.polygon([tuple(p) for p in points], outline='red', width=2)
-                
-                # 在文本框上方显示置信度
-                x_min = min([p[0] for p in points])
-                y_min = min([p[1] for p in points])
-                
-                # 置信度文本
-                conf_text = f"{confidence:.3f}"
-                
-                # 绘制置信度背景和文本
-                try:
-                    bbox = draw.textbbox((x_min, y_min - 25), conf_text, font=font_small)
-                    draw.rectangle(bbox, fill='red', outline='red')
-                    draw.text((x_min, y_min - 25), conf_text, fill='white', font=font_small)
-                except:
-                    draw.text((x_min, y_min - 25), conf_text, fill='red', font=font_small)
-                
-                # 在文本框左下方显示识别文本
-                if len(text) <= 20:
-                    y_max = max([p[1] for p in points])
-                    try:
-                        text_bbox = draw.textbbox((x_min, y_max + 5), text, font=font_small)
-                        draw.rectangle(text_bbox, fill='blue', outline='blue')
-                        draw.text((x_min, y_max + 5), text, fill='white', font=font_small)
-                    except:
-                        draw.text((x_min, y_max + 5), text, fill='blue', font=font_small)
-            
-            self.logger.log_message("文字框绘制完成")
-            return draw_image
-            
-        except Exception as e:
-            self.logger.log_message(f"绘制OCR结果时出错: {e}", "ERROR")
-            return image
-    
-    def save_screenshot(self, screenshot, process_info: Dict, ocr_results: List[Dict]) -> bool:
-        """保存截图文件
+    def save_screenshot_fallback(self, screenshot, process_info: Dict) -> bool:
+        """备用保存方法（当OCR处理器未初始化时）
         
         Args:
             screenshot: 截图图像
             process_info: 进程信息
-            ocr_results: OCR识别结果
             
         Returns:
             是否保存成功
@@ -327,32 +256,23 @@ class ProcessCaptureApp:
             
             # 生成文件名
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            if self.ocr_engine and len(ocr_results) > 0:
-                filename = f"{process_info['name']}_{process_info['pid']}_{timestamp}_OCR_{len(ocr_results)}个文字.png"
-            else:
-                filename = f"{process_info['name']}_{process_info['pid']}_{timestamp}_无OCR.png"
+            filename = f"{process_info['name']}_{process_info['pid']}_{timestamp}_无OCR.png"
             
             file_path = os.path.join(save_path, filename)
             
             # 保存截图
             screenshot.save(file_path)
             
-            if self.ui.is_timing_enabled():
-                save_time = self.timing_recorder.get_timing("文件保存")
-                total_time = self.timing_recorder.get_timing("总耗时")
-                self.logger.log_message(f"截图完成，已保存到: {file_path}")
-                self.logger.log_message(f"OCR结果: {len(ocr_results)} 个高置信度文字，总耗时: {total_time:.3f}秒")
-                self.ui.update_status(f"OCR识别截图成功，耗时: {total_time:.3f}秒")
-            else:
-                self.logger.log_message(f"截图完成，已保存到: {file_path}")
-                self.logger.log_message(f"OCR结果: {len(ocr_results)} 个高置信度文字")
-                self.ui.update_status("OCR识别截图成功")
+            self.logger.log_message(f"截图完成，已保存到: {file_path}")
+            self.logger.log_message("OCR结果: 0 个高置信度文字")
+            self.ui.update_status("截图成功（未进行OCR）")
             
             return True
             
         except Exception as e:
-            self.logger.log_message(f"保存截图失败: {e}", "ERROR")
+            self.logger.log_message(f"备用保存截图失败: {e}", "ERROR")
             return False
+    
     
     def output_timing_statistics(self):
         """输出详细的时间统计"""

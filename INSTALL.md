@@ -9,7 +9,7 @@ pip install -r requirements.txt
 
 ### 方法2：手动安装
 ```bash
-pip install pillow paddleocr opencv-python psutil pywin32 numpy
+pip install keyboard pillow paddleocr opencv-python psutil pywin32 numpy
 ```
 
 ## 详细说明
@@ -25,6 +25,7 @@ pip install pillow paddleocr opencv-python psutil pywin32 numpy
 | `numpy` | >=1.21.0 | 数值计算和数组处理 | 全平台 |
 | `psutil` | >=5.8.0 | 进程管理和监控 | 全平台 |
 | `pywin32` | >=305.0 | Windows API调用 | 仅Windows |
+| `keyboard` | >=0.13.0 | 全局键盘监听 | 全平台 |
 
 ### 可选依赖
 
@@ -54,7 +55,7 @@ python -c "import paddleocr, cv2, PIL, psutil, win32gui; print('所有依赖库�
 python3 -m pip install --upgrade pip
 
 # 2. 安装依赖（跳过pywin32）
-pip3 install pillow paddleocr opencv-python numpy psutil
+pip3 install keyboard pillow paddleocr opencv-python numpy psutil
 
 # 3. 验证安装
 python3 -c "import paddleocr, cv2, PIL, psutil; print('所有依赖库安装成功')"
@@ -127,6 +128,9 @@ def test_imports():
             print("✓ pywin32 - Windows API")
         except ImportError:
             print("! pywin32 - 未安装（仅Windows需要）")
+        
+        import keyboard
+        print("✓ keyboard - 键盘监听")
         
         print("\n🎉 所有依赖库检查完成！")
         

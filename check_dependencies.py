@@ -126,6 +126,7 @@ def main():
         ("cv2", "cv2", "计算机视觉库"),
         ("numpy", "numpy", "数值计算库"),
         ("psutil", "psutil", "进程管理库"),
+        ("keyboard", "keyboard", "键盘监听库"),
     ]
     
     success_count = 0
@@ -167,7 +168,7 @@ def main():
         print("\n安装命令:")
         print("  pip install -r requirements.txt")
         print("  或者:")
-        print("  pip install pillow paddleocr opencv-python psutil pywin32 numpy")
+        print("  pip install keyboard pillow paddleocr opencv-python psutil pywin32 numpy")
     
     print("\n详细安装指南请查看 INSTALL.md 文件")
 

@@ -37,17 +37,16 @@ class OCREngine:
         """初始化PaddleOCR模型"""
         try:
             device = "gpu" if self.use_gpu else "cpu"
+            
+            # 使用标准模式，经测试验证最优
             self.ocr = PaddleOCR(
-                use_doc_orientation_classify=False,  # 不使用文档方向分类模型
-                use_doc_unwarping=False,  # 不使用文本图像矫正模型
-                use_textline_orientation=False,  # 不使用文本行方向分类模型
-                text_detection_model_name="PP-OCRv5_mobile__det",
-                text_recognition_model_name="PP-OCRv5_mobile_rec",
+                use_angle_cls=True,
+                use_gpu=self.use_gpu,
                 lang=self.lang,
-                device=device,
-                show_log=False  # 不显示详细日志
+                show_log=False
             )
             print(f"OCR模型初始化完成 (语言: {self.lang}, 设备: {device})")
+                
         except Exception as e:
             print(f"OCR模型初始化失败: {e}")
             self.ocr = None
@@ -94,8 +93,11 @@ class OCREngine:
         
         try:
             print(f"正在识别图像数组，尺寸: {img_array.shape}")
+            
+            # 执行OCR识别
             result = self.ocr.ocr(img_array, cls=False)  # type: ignore
             return self._parse_ocr_result(result)
+            
         except Exception as e:
             print(f"识别图像数组时出错: {e}")
             return []

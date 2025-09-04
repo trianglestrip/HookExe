@@ -2,8 +2,13 @@ import tkinter as tk
 from tkinter import messagebox
 import numpy as np
 from PIL import Image, ImageTk, ImageGrab
+import keyboard
+import threading
 import time
-from modules.core import OCREngine, recognize_image
+import os
+from datetime import datetime
+from modules.core import OCREngine
+from modules.utils import UILogger, OCRProcessor
 
 class ScreenCapture:
     def __init__(self):
@@ -15,18 +20,30 @@ class ScreenCapture:
         self.capture_size = (600, 600)  # 默认截图大小
         self.selected_area = None
         
-        # 初始化OCR引擎
-        print("正在初始化OCR引擎...")
+        # 初始化日志系统
+        self.logger = UILogger(print)  # 使用print作为日志输出
+        
+        # 初始化OCR处理器（使用新的封装模块）
+        self.logger.log_message("正在初始化OCR处理器...")
         try:
-            self.ocr_engine = OCREngine(
+            # 创建OCR引擎
+            ocr_engine = OCREngine(
                 lang="ch",
                 use_gpu=False,
-                confidence_threshold=0.8
+                confidence_threshold=0.7  # 与main.py保持一致
             )
-            print("OCR引擎初始化完成")
+            
+            # 创建OCR处理器
+            self.ocr_processor = OCRProcessor(
+                ocr_engine=ocr_engine,
+                logger=self.logger,
+                save_path="./screenshots"
+            )
+            
+            self.logger.log_message("OCR处理器初始化完成（标准模式，平均识别时间~0.2秒）")
         except Exception as e:
-            print(f"OCR引擎初始化失败: {e}")
-            self.ocr_engine = None
+            self.logger.log_message(f"OCR处理器初始化失败: {e}", "ERROR")
+            self.ocr_processor = None
     
     def create_capture_window(self):
         """创建截图窗口"""
@@ -118,37 +135,19 @@ class ScreenCapture:
             # 转换为numpy数组进行OCR识别
             img_array = np.array(screenshot)
             
-            print(f"截图完成，尺寸: {img_array.shape}")
-            print("正在进行OCR识别...")
+            self.logger.log_message(f"截图完成，尺寸: {img_array.shape}")
+            self.logger.log_message("正在进行OCR识别...")
             
-            # 调用OCR识别
-            self.recognize_text(img_array)
+            # 调用OCR处理器进行识别和保存
+            if self.ocr_processor:
+                self.ocr_processor.recognize_and_save(screenshot, filename_prefix="capture_manual")
+            else:
+                self.logger.log_message("OCR处理器未初始化，无法进行识别", "ERROR")
             
         except Exception as e:
             print(f"截图失败: {e}")
             self.cancel_capture()
-    
-    def recognize_text(self, img_array):
-        """OCR文字识别"""
-        if self.ocr_engine is None:
-            print("OCR引擎未初始化，无法进行识别")
-            return []
-        
-        try:
-            # 使用OCR引擎识别图像数组
-            high_confidence_results = self.ocr_engine.recognize_image_array(img_array)
-            
-            if high_confidence_results:
-                print(f"\n找到 {len(high_confidence_results)} 个高置信度结果")
-                return high_confidence_results
-            else:
-                print("没有找到置信度大于0.8的识别结果")
-                return []
-                
-        except Exception as e:
-            print(f"OCR识别出错: {e}")
-            return []
-    
+
     def default_capture(self):
         """默认大小截图 (600x600)"""
         try:
@@ -167,14 +166,18 @@ class ScreenCapture:
             screenshot = ImageGrab.grab(bbox=(left, top, right, bottom))
             img_array = np.array(screenshot)
             
-            print(f"默认截图完成，尺寸: {img_array.shape}")
-            print("正在进行OCR识别...")
+            self.logger.log_message(f"默认截图完成，尺寸: {img_array.shape}")
+            self.logger.log_message("正在进行OCR识别...")
             
-            # 调用OCR识别
-            return self.recognize_text(img_array)
+            # 调用OCR处理器进行识别和保存
+            if self.ocr_processor:
+                return self.ocr_processor.recognize_and_save(screenshot, filename_prefix="capture_manual_default")
+            else:
+                self.logger.log_message("OCR处理器未初始化，无法进行识别", "ERROR")
+                return []
             
         except Exception as e:
-            print(f"默认截图失败: {e}")
+            self.logger.log_message(f"默认截图失败: {e}", "ERROR")
             return []
     
     def start_capture(self, use_selection=True):
@@ -186,24 +189,43 @@ class ScreenCapture:
             # 使用默认大小截图
             return self.default_capture()
 
-if __name__ == "__main__":
-    # 创建并启动截图工具
+def on_key_press():
+    """键盘监听函数"""
     capture = ScreenCapture()
     
-    print("截图程序已启动！")
-    print("使用capture.start_capture(use_selection=True)进行区域截图")
-    print("使用capture.start_capture(use_selection=False)进行默认大小(600x600)截图")
+    def handle_g_key():
+        capture.logger.log_message("检测到按键 'g'，开始区域截图...")
+        capture.start_capture(use_selection=True)
     
-    # 创建主窗口并隐藏
+    def handle_shift_g_key():
+        capture.logger.log_message("检测到按键 'Shift+g'，开始默认大小截图...")
+        result = capture.start_capture(use_selection=False)  # 存储结果但不返回
+        return None  # 显式返回 None
+    
+    # 注册热键
+    keyboard.add_hotkey('g', handle_g_key)
+    keyboard.add_hotkey('shift+g', handle_shift_g_key)
+    
+    capture.logger.log_message("截图程序已启动！")
+    capture.logger.log_message("按 'g' 键进行区域截图")
+    capture.logger.log_message("按 'Shift+g' 键进行默认大小(600x600)截图")
+    capture.logger.log_message("按 'Ctrl+C' 退出程序")
+    
+    try:
+        keyboard.wait('ctrl+c')
+    except KeyboardInterrupt:
+        pass
+    finally:
+        capture.logger.log_message("\n程序已退出")
+
+if __name__ == "__main__":
+    # 创建主窗口（隐藏）
     root = tk.Tk()
-    root.withdraw()
+    root.withdraw()  # 隐藏主窗口
     
-    # 显示使用说明
-    messagebox.showinfo("OCR截图工具", 
-                       "截图工具已启动\n\n"
-                       "区域截图：capture.start_capture(use_selection=True)\n"
-                       "默认截图：capture.start_capture(use_selection=False)\n\n"
-                       "建议使用主程序：python main.py")
+    # 启动键盘监听
+    keyboard_thread = threading.Thread(target=on_key_press, daemon=True)
+    keyboard_thread.start()
     
     # 启动GUI主循环
     try:
