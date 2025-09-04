@@ -2,8 +2,6 @@ import tkinter as tk
 from tkinter import messagebox
 import numpy as np
 from PIL import Image, ImageTk, ImageGrab
-import keyboard
-import threading
 import time
 from modules.core import OCREngine, recognize_image
 
@@ -188,43 +186,24 @@ class ScreenCapture:
             # 使用默认大小截图
             return self.default_capture()
 
-def on_key_press():
-    """键盘监听函数"""
+if __name__ == "__main__":
+    # 创建并启动截图工具
     capture = ScreenCapture()
     
-    def handle_g_key():
-        print("检测到按键 'g'，开始区域截图...")
-        capture.start_capture(use_selection=True)
-    
-    def handle_shift_g_key():
-        print("检测到按键 'Shift+g'，开始默认大小截图...")
-        result = capture.start_capture(use_selection=False)  # 存储结果但不返回
-        return None  # 显式返回 None
-    
-    # 注册热键
-    keyboard.add_hotkey('g', handle_g_key)
-    keyboard.add_hotkey('shift+g', handle_shift_g_key)
-    
     print("截图程序已启动！")
-    print("按 'g' 键进行区域截图")
-    print("按 'Shift+g' 键进行默认大小(600x600)截图")
-    print("按 'Ctrl+C' 退出程序")
+    print("使用capture.start_capture(use_selection=True)进行区域截图")
+    print("使用capture.start_capture(use_selection=False)进行默认大小(600x600)截图")
     
-    try:
-        keyboard.wait('ctrl+c')
-    except KeyboardInterrupt:
-        pass
-    finally:
-        print("\n程序已退出")
-
-if __name__ == "__main__":
-    # 创建主窗口（隐藏）
+    # 创建主窗口并隐藏
     root = tk.Tk()
-    root.withdraw()  # 隐藏主窗口
+    root.withdraw()
     
-    # 启动键盘监听
-    keyboard_thread = threading.Thread(target=on_key_press, daemon=True)
-    keyboard_thread.start()
+    # 显示使用说明
+    messagebox.showinfo("OCR截图工具", 
+                       "截图工具已启动\n\n"
+                       "区域截图：capture.start_capture(use_selection=True)\n"
+                       "默认截图：capture.start_capture(use_selection=False)\n\n"
+                       "建议使用主程序：python main.py")
     
     # 启动GUI主循环
     try:
